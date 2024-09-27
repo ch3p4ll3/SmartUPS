@@ -1,0 +1,20 @@
+#define DEBUG
+
+#define OUTAGE_SENSOR_PIN 16
+
+#define DELAY_BETWEEN_STATUS 10 // s
+#define WAIT_FOR_SHUTDOWN 20 // min
+#define TIMEZONE_DELTA 0  // UTC
+
+#define WIFI_SSID "WIFI-SSID"
+#define WIFI_PASSWORD "WIFI-PASSWORD"
+#define MQTT_BROKER_IP "broker.emqx.io"
+#define MQTT_USERNAME ""
+#define MQTT_PASSWORD ""
+#define MQTT_CLIENT_NAME "IOT-UPS"
+#define MQTT_PORT 1883
+
+#define STATUS_TOPIC "SmartUPS/status"
+#define OUTAGE_TOPIC "SmartUPS/Outage"
+#define POWER_RESTORED_TOPIC "SmartUPS/powerRestored"
+#define SHUTDOWN_TOPIC "SmartUPS/shutdown"
