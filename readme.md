@@ -48,6 +48,7 @@ This repository contains the code for a smart UPS project built using an ESP32 m
 **Usage**
 
 1. **Hardware Setup:**
+   ![Schematics](./docs/imgs/drawing.png)
    * Connect the ESP32, relay, INA226 sensor, and DS3231 module according to the provided schematics.
    * Ensure proper power supply and connections.
 
