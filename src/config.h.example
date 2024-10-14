@@ -11,7 +11,7 @@
 
 #define WIFI_SSID "WIFI-SSID"
 #define WIFI_PASSWORD "WIFI-PASSWORD"
-#define MQTT_BROKER_IP "broker.emqx.io"
+#define MQTT_BROKER_HOSTNAME "broker.emqx.io"
 #define MQTT_USERNAME ""
 #define MQTT_PASSWORD ""
 #define MQTT_CLIENT_NAME "IOT-UPS"

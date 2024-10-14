@@ -26,10 +26,11 @@
 
 bool isOutagePresent = false;
 bool timeSetted = false;
+bool isConnected = false;
 bool shutdownFired = false;
 unsigned long int timePassedSinceOutage = 0;
 unsigned long int timePassed = 0;
-int batteryLife = BATTERY_AH;
+float batteryLife = BATTERY_AH;
 
 static int taskCore = 0;
 
@@ -42,7 +43,7 @@ NTPClient timeClient(wifiUdp, "at.pool.ntp.org", TIMEZONE_DELTA * 3600, 60000);
 EspMQTTClient client(
   WIFI_SSID,
   WIFI_PASSWORD,
-  MQTT_BROKER_IP,  // MQTT Broker server ip
+  MQTT_BROKER_HOSTNAME,  // MQTT Broker server ip
   MQTT_USERNAME,   // Can be omitted if not needed
   MQTT_PASSWORD,   // Can be omitted if not needed
   MQTT_CLIENT_NAME,     // Client name that uniquely identify your device
@@ -50,12 +51,12 @@ EspMQTTClient client(
 );
 
 
-ICACHE_RAM_ATTR void onOutagePinChange();
 void coreTask( void * pvParameters );
 void setTime();
 void onPowerOutage();
 void onPowerRestored();
 void shutdown();
+bool CheckIfOutagePresent();
 
 
 void setup() {
@@ -67,7 +68,7 @@ void setup() {
   Wire.begin();
 
   if (!rtc.begin()) {
-    Serial.println("RTC not detected");
+    DEBUG_PRINTLN("RTC not detected");
 
     while (1); // Hang indefinitely if RTC is not found
   }
@@ -75,13 +76,11 @@ void setup() {
   Wire.begin();
   if (!INA0.begin() )
   {
-    Serial.println("INA0 could not connect. Fix and Reboot");
+    DEBUG_PRINTLN("INA0 could not connect. Fix and Reboot");
   }
 
-  INA0.setMaxCurrentShunt(INA226_MAX_CURRENT, INA226_SHUNT_RESISTOR_VALUE);
-
-  pinMode(OUTAGE_SENSOR_PIN, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(OUTAGE_SENSOR_PIN), onOutagePinChange, CHANGE);
+  INA0.setMaxCurrentShunt(INA226_MAX_CURRENT, INA226_SHUNT_RESISTOR_VALUE, false);
+  INA0.setAverage(INA226_4_SAMPLES);
 
   xTaskCreatePinnedToCore(
     coreTask,   /* Function to implement the task */
@@ -91,9 +90,13 @@ void setup() {
     0,          /* Priority of the task */
     NULL,       /* Task handle. */
     taskCore);  /* Core where the task should run */
+
+  client.setMaxPacketSize(400);
 }
 
 void loop() {
+  isOutagePresent = CheckIfOutagePresent();
+
   if (isOutagePresent && !timeSetted){
     onPowerOutage();
   }
@@ -109,34 +112,36 @@ void loop() {
   delay(10);
 }
 
-ICACHE_RAM_ATTR void onOutagePinChange() {
-  if (digitalRead(OUTAGE_SENSOR_PIN) == LOW)
-    isOutagePresent = true;
-  else
-    isOutagePresent = false;
-}
-
 void onConnectionEstablished() {
   timeClient.begin();
   timeClient.update();
   timeClient.forceUpdate();
+
+  DEBUG_PRINTLN("Connected to MQTT broker");
+  isConnected = true;
 
   setTime();
 }
 
 void coreTask( void * pvParameters ){
     while(true){
-      if (millis() - timePassed >= DELAY_BETWEEN_STATUS * 1000){
+      if (millis() - timePassed >= DELAY_BETWEEN_STATUS * 1000 && isConnected){
         String toSend;
-        DynamicJsonDocument doc(2048);
+        StaticJsonDocument<400> doc;
 
         DateTime now = rtc.now();
 
-        float current = INA0.getCurrent();
+        float current = INA0.getCurrent_mA();
         float voltage = INA0.getBusVoltage();
 
         if (isOutagePresent)
-          batteryLife -= current * (DELAY_BETWEEN_STATUS / 3600.0);
+          batteryLife -= (current / 1000) * (DELAY_BETWEEN_STATUS / 3600.0);
+        else{
+          if (batteryLife > BATTERY_AH)
+            batteryLife += (current / 1000) * (DELAY_BETWEEN_STATUS / 3600.0);
+          else
+            batteryLife = BATTERY_AH;
+        }
 
         doc["lastOutageTime"] = lastOutage.timestamp() + "Z";
         doc["isOutagePresent"] = isOutagePresent;
@@ -145,13 +150,14 @@ void coreTask( void * pvParameters ){
         doc["current"] = current;
         doc["power"] = INA0.getPower();
         doc["shuntVoltage"] = INA0.getShuntVoltage_mV();
-        doc["batteryLeft"] = (batteryLife / BATTERY_AH) * 100;
-        doc["powerLeft"] = batteryLife * voltage;
-        doc["batteryStatus"] = batteryLife;
+        doc["batteryPercentage"] = (batteryLife / BATTERY_AH) * 100;
+        doc["WhLeft"] = batteryLife * voltage;
+        doc["AhLeft"] = batteryLife;
 
         serializeJson(doc, toSend);
 
         client.publish(STATUS_TOPIC, toSend);
+
         timePassed = millis();
         DEBUG_PRINTLN("status message sent");
       }
@@ -167,8 +173,8 @@ void setTime() {
 }
 
 void onPowerOutage(){
-  timePassedSinceOutage = millis();
   timeSetted = true;
+  timePassedSinceOutage = millis();
   lastOutage = rtc.now();
   DEBUG_PRINTLN("Outage detected");
   client.publish(OUTAGE_TOPIC, "toSend");
@@ -178,7 +184,6 @@ void onPowerOutage(){
 void onPowerRestored(){
   timeSetted = false;
   shutdownFired = false;
-  batteryLife = BATTERY_AH;
   DEBUG_PRINTLN("Power restored");
   client.publish(POWER_RESTORED_TOPIC, "toSend");
 }
@@ -192,4 +197,20 @@ void shutdown(){
     DEBUG_PRINTLN("Sending Shutdown");
     shutdownFired = true;
   }
+}
+
+bool CheckIfOutagePresent(){
+  float a = INA0.getCurrent_mA();
+  bool status = a >= 100;
+
+  if (status != isOutagePresent){
+    DEBUG_PRINT(a);
+    DEBUG_PRINT(" , ");
+    DEBUG_PRINTLN(isOutagePresent);
+    if (millis() - timePassedSinceOutage > 1000){
+      return status;
+    }
+  }
+
+  return isOutagePresent;
 }
