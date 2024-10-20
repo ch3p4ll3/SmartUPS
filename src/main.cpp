@@ -65,6 +65,8 @@ void setup() {
     while (!Serial);
   #endif
 
+  client.enableOTA();
+
   Wire.begin();
 
   if (!rtc.begin()) {
@@ -137,7 +139,7 @@ void coreTask( void * pvParameters ){
         if (isOutagePresent)
           batteryLife -= (current / 1000) * (DELAY_BETWEEN_STATUS / 3600.0);
         else{
-          if (batteryLife > BATTERY_AH)
+          if (batteryLife < BATTERY_AH)
             batteryLife += (current / 1000) * (DELAY_BETWEEN_STATUS / 3600.0);
           else
             batteryLife = BATTERY_AH;
