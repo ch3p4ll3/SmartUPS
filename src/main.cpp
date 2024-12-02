@@ -31,6 +31,7 @@ bool shutdownFired = false;
 unsigned long int timePassedSinceOutage = 0;
 unsigned long int timePassed = 0;
 float batteryLife = BATTERY_AH;
+float last_voltage = VOLTAGE_MAX;
 
 static int taskCore = 0;
 
@@ -135,6 +136,12 @@ void coreTask( void * pvParameters ){
 
         float current = INA0.getCurrent_mA();
         float voltage = INA0.getBusVoltage();
+
+        if (voltage > VOLTAGE_MAX){
+            voltage = last_voltage;
+        } else {
+            last_voltage = voltage;
+        }
 
         if (isOutagePresent)
           batteryLife -= (current / 1000) * (DELAY_BETWEEN_STATUS / 3600.0);
